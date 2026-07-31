@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.plugin.serialization)
 }
 
-group = "com.serraf"
+group = "com.koin"
 version = "0.0.1"
 
 application {
