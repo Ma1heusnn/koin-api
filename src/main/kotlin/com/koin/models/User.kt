@@ -61,4 +61,7 @@ fun UserDTO.validate(): List<String> = buildList {
     if (!email.contains("@")) add("Email inválido")
 
     if ((password.isEmpty() || password.length < 8)) add("Sua senha deve possuir ao menos 8 caracteres")
+
+    if (username.isBlank()) add("O nome não deve ser vazio")
+    if (username.contains('@')) add("O nome de usuário não deve conter @")
 }

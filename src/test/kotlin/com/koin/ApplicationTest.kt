@@ -416,7 +416,7 @@ class ApplicationTest {
     }
 
     @Test
-    fun `Teste de campos em branco na adição de categoria` () = testApplication {
+    fun `Teste de campos em branco na adição de categoria`() = testApplication {
         bootH2()
         val client = jsonClient()
         val token =
@@ -492,7 +492,12 @@ class ApplicationTest {
             header(HttpHeaders.Authorization, "Bearer $tokenB")
             contentType(ContentType.Application.Json)
             setBody(
-                CostDTO(title = "Feira", categoryId = catDoB, value = BigDecimal("50.00"), type = TransactionType.OUTFLOW)
+                CostDTO(
+                    title = "Feira",
+                    categoryId = catDoB,
+                    value = BigDecimal("50.00"),
+                    type = TransactionType.OUTFLOW
+                )
             )
         }.body<CostDTOResponse>().id
 
@@ -529,7 +534,12 @@ class ApplicationTest {
             header(HttpHeaders.Authorization, "Bearer $token")
             contentType(ContentType.Application.Json)
             setBody(
-                CostDTO(title = "Uber", categoryId = minhaCategoria, value = BigDecimal("30.00"), type = TransactionType.OUTFLOW)
+                CostDTO(
+                    title = "Uber",
+                    categoryId = minhaCategoria,
+                    value = BigDecimal("30.00"),
+                    type = TransactionType.OUTFLOW
+                )
             )
         }.body<CostDTOResponse>().id
 
@@ -561,7 +571,13 @@ class ApplicationTest {
             client.get("/costs/abc", auth),
             client.patch("/costs/abc") { auth(); contentType(ContentType.Application.Json); setBody(CostPatch(title = "x")) },
             client.delete("/categories/abc", auth),
-            client.patch("/categories/abc") { auth(); contentType(ContentType.Application.Json); setBody(CategoryPatch(name = "x")) }
+            client.patch("/categories/abc") {
+                auth(); contentType(ContentType.Application.Json); setBody(
+                CategoryPatch(
+                    name = "x"
+                )
+            )
+            }
         )) {
             assertEquals(HttpStatusCode.BadRequest, resp.status)
             assertEquals("""{"error":"Requisição Inválida"}""", resp.bodyAsText())
@@ -679,5 +695,86 @@ class ApplicationTest {
             setBody(RefreshRequest("token-que-nunca-foi-emitido"))
         }
         assertEquals(HttpStatusCode.Unauthorized, resp.status)
+    }
+
+    @Test
+    fun `cadastro de terceiro nao derruba o login da vítima (S1)`() = testApplication {
+        bootH2()
+
+        val client = jsonClient()
+
+        client.registrarELogarFull("vitima-s1@exemplo.com", "vitima-s1")
+
+        client.post("/users") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                UserDTO(
+                    email = "atacante-s1@exemplo.com",
+                    password = "senha1234",
+                    username = "vitima-s1@exemplo.com"
+                )
+            )
+        }
+
+        val login = client.post("/users/login") {
+            contentType(ContentType.Application.Json)
+            setBody(UserLogin(identifier = "vitima-s1@exemplo.com", password = "senha1234"))
+
+        }
+
+        assertEquals(HttpStatusCode.OK, login.status, "o cadastro de um terceiro derrubou o login da vítima")
+    }
+
+    @Test
+    fun `cadastro com username repetido nao derruba o login por username (S1)`() = testApplication {
+        bootH2()
+        val client = jsonClient()
+
+        client.registrarELogarFull("vitima-s1b@exemplo.com", "vitima-s1b")
+
+        // Atacante cadastra com o MESMO username da vítima. SEM @.
+        client.post("/users") {
+            contentType(ContentType.Application.Json)
+            setBody(UserDTO(
+                email = "atacante-s1b@exemplo.com",
+                password = "senha1234",
+                username = "vitima-s1b"
+            ))
+        }
+
+        // A vítima continua entrando pelo USERNAME dela.
+        val login = client.post("/users/login") {
+            contentType(ContentType.Application.Json)
+            setBody(UserLogin(identifier = "vitima-s1b", password = "senha1234"))
+        }
+        assertEquals(HttpStatusCode.OK, login.status, "username duplicado derrubou o login por username")
+    }
+
+    @Test
+    fun `cadastro recusa username com arroba, em branco e repetido (S1 - mecanismo)`() = testApplication {
+        bootH2()
+        val client = jsonClient()
+
+        // Com @ -> 400 pela validação, sem tocar no banco.
+        val comArroba = client.post("/users") {
+            contentType(ContentType.Application.Json)
+            setBody(UserDTO(email = "mec1@exemplo.com", password = "senha1234", username = "tem@arroba"))
+        }
+        assertEquals(HttpStatusCode.BadRequest, comArroba.status, "username com @ deveria ser recusado")
+
+        // Só espaços -> 400. É o caso que isEmpty() deixaria passar.
+        val emBranco = client.post("/users") {
+            contentType(ContentType.Application.Json)
+            setBody(UserDTO(email = "mec2@exemplo.com", password = "senha1234", username = "   "))
+        }
+        assertEquals(HttpStatusCode.BadRequest, emBranco.status, "username em branco deveria ser recusado")
+
+        // Repetido -> 409, vindo do uniqueIndex via handler de ExposedSQLException.
+        client.registrarELogarFull("mec3@exemplo.com", "username-do-mec3")
+        val repetido = client.post("/users") {
+            contentType(ContentType.Application.Json)
+            setBody(UserDTO(email = "mec4@exemplo.com", password = "senha1234", username = "username-do-mec3"))
+        }
+        assertEquals(HttpStatusCode.Conflict, repetido.status, "username repetido deveria dar 409")
     }
 }
