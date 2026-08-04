@@ -1,14 +1,19 @@
 # Code Review — Backend Ktor (kotlinAPI)
 
-> 🔴 **ABERTOS: ver [`ACHADOS-ABERTOS.md`](ACHADOS-ABERTOS.md) (S1–S8, M1–M5, E1–E5).** Varredura de
-> 2026-07-29 sobre o código inteiro. O **S1 é ALTO e verificado rodando**: `username` não é único e
-> dois `POST /users` bloqueiam o login de uma vítima permanentemente, sem autenticação. Começar por ele.
+> 🔴 **ABERTOS: ver [`ACHADOS-ABERTOS.md`](ACHADOS-ABERTOS.md) — S2–S8, M1–M5, E3, E5** (+ duas
+> pontas do E2). Varredura de 2026-07-29 sobre o código inteiro. **Começar pelo S2 + S3** (validação
+> de Patch): o S2 já está destravado, porque a dependência dele no E2 saiu no `f1d4052`.
+>
+> ✅ **S1 fechado (2026-07-31, `cbdc65c`).** Era o ALTO da lista — `username` sem unicidade, e dois
+> `POST /users` bloqueavam o login de uma vítima permanentemente, sem autenticação. Fechado com
+> `uniqueIndex()` + `@` proibido no username (as duas metades; nenhuma resolve sozinha).
+> **E1 e E4 fechados (2026-07-31, `f1d4052`)** — pacote raiz `com.koin`; **E2 parcial**.
 >
 > ✅ **P1–P6 fechados (2026-07-29) — ver [`ACHADOS-PENDENTES.md`](ACHADOS-PENDENTES.md).**
 > Saíram de uma varredura feita DEPOIS de fechar C/H/M; nenhum estava na lista original. P1 está
 > documentado abaixo; P2 (IDOR no `PATCH /costs`), P3 (`toInt()` → 500), P4 (ordem da validação),
 > P5 (coleção vazia = 200 + `[]`) e P6 (delete de global) estão no outro documento, cada um com a
-> decisão que o fechou. **Suíte: 22 testes, 0 falhas** (conferido no XML).
+> decisão que o fechou. **Suíte: 25 testes, 0 falhas** (eram 22; o S1 trouxe 3).
 
 Progresso das correções do code review. Ordem de ataque: **C1 → C2 → C3 → C4 → C5**, depois **H1 (StatusPages)** e **H2 (Hikari)**.
 

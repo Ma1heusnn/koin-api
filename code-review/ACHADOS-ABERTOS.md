@@ -4,8 +4,20 @@ Saíram de uma leitura completa de `src/main` (25 arquivos) + `build.gradle.kts`
 `V1__baseline.sql`, `logback.xml` e `.gitignore`, **depois** de fechar C1–C5, H1–H9, M1–M9 e P1–P6.
 Nenhum estava nas listas anteriores.
 
-**Estado do repositório:** `gradlew test` → **22 testes, 0 falhas** (conferido no XML). Nada aqui
-deixou a suíte vermelha — os achados são de código que ninguém exercitava.
+**Estado do repositório (na data da varredura):** `gradlew test` → **22 testes, 0 falhas** (conferido
+no XML). Nada aqui deixou a suíte vermelha — os achados são de código que ninguém exercitava.
+
+> **Atualização 2026-07-31 — três achados fechados, suíte em 25 testes, 0 falhas:**
+>
+> | Achado | Estado | Commit |
+> |---|---|---|
+> | **S1** | ✅ resolvido | `cbdc65c` |
+> | **E1**, **E4** | ✅ resolvidos | `f1d4052` |
+> | **E2** | 🟡 parcial — falta `transformPasswordInHash` → `security/` e achatar `tables/` | `f1d4052` |
+>
+> Seguem abertos: **S2–S8**, **M1–M5**, **E3**, **E5** e as duas pontas do E2.
+> **Os caminhos citados nos achados abaixo são os de antes do `f1d4052`** — hoje tudo mora sob
+> `src/main/kotlin/com/koin/`, e `repositories/` chama-se `tables/`. Próximo da fila: **S2 + S3**.
 
 **Prefixos:** `S` = segurança/corretude · `M` = módulo/rota faltando · `E` = estrutura.
 
@@ -15,19 +27,40 @@ teste na hora de consertar. Princípio 8: não afirmar sem rodar.
 
 ## Ordem sugerida
 
-1. **S1** — o único explorável por terceiro, e a exploração custa 2 requests.
+1. ~~**S1**~~ — ✅ fechado em 2026-07-31 (`cbdc65c`). Era o único explorável por terceiro.
 2. **S2 + S3** — mesma família (validação de Patch); o S2 depende do E2 para não duplicar regra.
 3. **S4** — 5 linhas reaproveitando plugin já instalado.
-4. **E1 + E2** — baratos, independentes, e o E2 destrava o S2.
+4. ~~**E1 + E2**~~ — ✅ a parte que importava saiu em `f1d4052`: com `validateUser` já virado
+   `UserDTO.validate()` em `models/`, **o S2 está destravado** — pode ser atacado direto.
 5. **S5 + S6** — mentira de status code; conserto mecânico.
 6. **M1 / M2** — precisam de decisão de contrato/domínio antes do código.
-7. **E4** — passe mecânico, quando der. **E3/E5** vão de carona nele.
+7. ~~**E1 + E4**~~ — ✅ fechados em 2026-07-31 (`f1d4052`); o **E2** foi junto quase todo (ver lá).
+   Sobrou o **E3** + as duas pontas do E2, que agora vão de carona nele. **E5** segue por último.
 
 ---
 
 # S — Segurança e corretude
 
-## S1 🔴 ALTO — `username` não é único → bloqueio permanente de conta, por terceiro, sem autenticação ✅ VERIFICADO
+## ~~S1~~ ✅ **RESOLVIDO** em 2026-07-31 (`cbdc65c`) — `username` não é único → bloqueio permanente de conta
+
+> **Como foi fechado:** as duas metades previstas abaixo, porque nenhuma resolve sozinha (visto
+> acontecer: com só a metade 1, o teste do vetor de username seguiu vermelho).
+>
+> 1. **`@` proibido no username** (`models/User.kt`) — parte o espaço de identificadores: **com** `@`
+>    só casa e-mail (já único), **sem** `@` só casa username;
+> 2. **`uniqueIndex()` em `UsersTable.username`** + `V2__username_unique.sql`.
+>
+> `singleOrNull()` **não** virou `firstOrNull()`, como o texto abaixo alertava. Username duplicado
+> responde **409** pelo handler de `ExposedSQLException`, sem pré-checagem (a constraint é quem
+> garante; `SELECT` prévio é TOCTOU). A mensagem genérica desse 409 é o que o **S6** ainda vai
+> melhorar para a API inteira.
+>
+> **Verificado:** 3 testes novos escritos vermelhos antes do conserto (2 defendem o fato "a vítima
+> continua logando", um por vetor; 1 defende o contrato da rota) → `gradlew test` **25 testes, 0
+> falhas**. Boot real contra o MySQL: Flyway aplicou V1 e V2 com `success=1` e `SHOW INDEX FROM users`
+> lista `users_username_unique` com `Non_unique=0` — isso também fecha a pendência de boot real do M5.
+>
+> O relato original fica abaixo, na íntegra, porque é o que ensina o bug.
 
 **Onde:** `repositories/users/UsersTable.kt:7` (username sem `uniqueIndex()`),
 `repositories/users/UsersRepository.validateUser` (só checa e-mail duplicado),
@@ -280,7 +313,10 @@ conta bloqueada. Consertar o S1 baixa a urgência disto.
 
 # E — Estrutura de pastas e pacotes
 
-## E1 — `Routing.kt` não declara `package`
+## ~~E1~~ ✅ **RESOLVIDO** em 2026-07-31 (`f1d4052`) — `Routing.kt` não declara `package`
+
+> Foi junto no passe do E4: `Routing.kt` agora abre com `package com.koin`, e o `import
+> configureRouting` solto do default package sumiu do `Application.kt`.
 
 **Onde:** `Routing.kt:1` (começa direto num `import`).
 
@@ -289,7 +325,26 @@ O arquivo fica no **pacote raiz**, e é por isso que `Application.kt:13` tem aqu
 projeto usa. **Correção: 1 linha** (`package com.serraf`, ou o pacote que o E4 adotar) + ajustar o
 import.
 
-## E2 — `repositories/` não contém repositório nenhum
+## E2 🟡 **PARCIAL** — `repositories/` não contém repositório nenhum
+
+> **Fechado em 2026-07-31 (`f1d4052`):**
+>
+> - `repositories/` virou **`tables/`** — o nome não mente mais;
+> - **`validateUser` virou `UserDTO.validate()`** em `models/User.kt`, ao lado de
+>   `CategoryDTO.validate()` e `CostDTO.validate()`. A pré-checagem de e-mail duplicado foi
+>   **removida**, não movida: consultava o banco (forçando `suspend`) e era TOCTOU — quem garante
+>   unicidade é o `uniqueIndex`, e o duplicado vira 409 pelo StatusPages;
+> - **nenhuma rota importa a camada de persistência** (`grep "import com.koin.tables" routes/` → 0).
+>   O `route → service → table` fechou.
+>
+> **O que continua aberto:**
+>
+> - **`transformPasswordInHash` ainda mora em `tables/users/UsersRepository.kt`** — é BCrypt, cabe em
+>   `security/`. É a última coisa dentro daquele `object`; movida, o arquivo some inteiro;
+> - as 4 tabelas seguem **cada uma num subpacote próprio com um arquivo dentro**
+>   (`tables/{categories,costs,refresh,users}/`), em vez de lado a lado.
+>
+> Ambos são passe mecânico, e vão bem de carona no **E3**.
 
 **Onde:** `repositories/{categories,costs,users,refresh}/`.
 
@@ -313,7 +368,20 @@ Fazer **antes** do S1/S2 evita mexer duas vezes nos mesmos arquivos.
 É a infra de banco: pool Hikari, `Flyway.migrate()`, `Database.connect` e o `dbQuery`. Cabe em `db/`
 (junto do `tables/` do E2). Renomear o pacote é 1 linha por import.
 
-## E4 — pacote base inconsistente (o passe mecânico)
+**Continua aberto** — o E4 (`f1d4052`) passou por aqui e manteve `factory/`. Sobrou de lá uma pasta
+`src/main/kotlin/com/koin/db/` **vazia** (o Git não versiona diretório vazio, então ela só existe na
+sua máquina): é o destino já reservado, ou lixo para apagar se o E3 não for acontecer.
+
+## ~~E4~~ ✅ **RESOLVIDO** em 2026-07-31 (`f1d4052`) — pacote base inconsistente (o passe mecânico)
+
+> **Duas diferenças em relação ao desenho abaixo**, ambas deliberadas:
+>
+> - o pacote raiz adotado foi **`com.koin`**, não `com.serraf` — leia a árvore abaixo trocando um
+>   pelo outro. `application.conf` foi junto (`modules = [ com.koin.ApplicationKt.module ]`), sem o
+>   que o app não subiria;
+> - **`factory/` continuou `factory/`** — o `db/` do desenho depende do **E3**, que segue aberto.
+>
+> `src/test/kotlin/com/koin/` espelha o pacote. Passe mecânico puro, sem correção de bug junto.
 
 `Application.kt` declara `package com.serraf` mas mora em `src/main/kotlin/`; todo o resto usa
 pacotes de topo sem prefixo (`routes`, `models`, `services`, `security`, `plugins`, `serializers`,
@@ -343,7 +411,7 @@ mesmo passo (senão o diff esconde o conserto). Rodar `gradlew test` depois: 22/
 `application.conf` já aponta para `com.serraf.ApplicationKt.module` — se o pacote do
 `Application.kt` mudar, essa linha muda junto **ou o app não sobe**.
 
-## E5 — `ApplicationTest.kt`: 32 KB, 22 testes numa classe só
+## E5 — `ApplicationTest.kt`: uma classe só (25 testes desde o S1; eram 22 na varredura)
 
 Dividir por área (users/auth/costs/categories) é o normal, mas há um obstáculo **real**: o H2 é
 compartilhado num `companion object` e `DatabaseFactory.database` é global por JVM (estado mutável
