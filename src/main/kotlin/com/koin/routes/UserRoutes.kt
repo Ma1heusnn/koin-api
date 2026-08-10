@@ -52,7 +52,10 @@ fun Route.userRoutes(userService: UserService) {
             patch("/profile") {
                 val userId = call.userId()
                 val user = call.receive<UserPatch>()
-
+                val validate = user.validate()
+                if (validate.isNotEmpty()) {
+                    return@patch call.respond(HttpStatusCode.BadRequest, validate)
+                }
                 val success = userService.updateUser(userId, user)
                 if (success) {
                     call.respond(HttpStatusCode.OK, "Usuário editado com sucesso")

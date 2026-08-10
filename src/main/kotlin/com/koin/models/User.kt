@@ -65,3 +65,11 @@ fun UserDTO.validate(): List<String> = buildList {
     if (username.isBlank()) add("O nome não deve ser vazio")
     if (username.contains('@')) add("O nome de usuário não deve conter @")
 }
+
+fun UserPatch.validate(): List<String> = buildList {
+    email?.let { if (email.isBlank()) add("O email não deve ser vazio") }
+    email?.let { if (!email.contains("@")) add("Email inválido") }
+    password?.let { if (password.isBlank() || password.length < 8) add("Sua senha deve ter ao menos 8 caracteres") }
+    username?.let { if (username.isBlank()) add("O nome de usuário não deve ser vazio") }
+    username?.let { if (username.contains('@')) add("O nome de usuário não deve conter @") }
+}
