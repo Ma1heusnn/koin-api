@@ -1,6 +1,6 @@
-package com.koin.com.koin
+package com.koin
 
-import com.koin.appModule
+
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -36,7 +36,6 @@ import com.koin.models.TransactionType
 import com.koin.models.UserDTO
 import com.koin.models.UserLogin
 import com.koin.models.UserPatch
-import com.koin.module
 import org.h2.jdbcx.JdbcDataSource
 import com.koin.serializers.BigDecimalSerializer
 import javax.sql.DataSource
@@ -735,11 +734,13 @@ class ApplicationTest {
         // Atacante cadastra com o MESMO username da vítima. SEM @.
         client.post("/users") {
             contentType(ContentType.Application.Json)
-            setBody(UserDTO(
-                email = "atacante-s1b@exemplo.com",
-                password = "senha1234",
-                username = "vitima-s1b"
-            ))
+            setBody(
+                UserDTO(
+                    email = "atacante-s1b@exemplo.com",
+                    password = "senha1234",
+                    username = "vitima-s1b"
+                )
+            )
         }
 
         // A vítima continua entrando pelo USERNAME dela.
@@ -776,5 +777,118 @@ class ApplicationTest {
             setBody(UserDTO(email = "mec4@exemplo.com", password = "senha1234", username = "username-do-mec3"))
         }
         assertEquals(HttpStatusCode.Conflict, repetido.status, "username repetido deveria dar 409")
+    }
+
+    @Test
+    fun `verificar status do patch de categoria vazio`() = testApplication {
+        bootH2()
+
+        val client = jsonClient()
+
+        val token = client.registrarELogar("patch@exemplo.com", "patchUser")
+
+        val catId = client.post("/categories") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(CategoryDTO(name = "Categoria do A (custos)"))
+        }.body<Category>().id!!
+
+        val resp = client.patch("/categories/$catId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(CategoryPatch())
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+        assertTrue(resp.bodyAsText().contains("Envie ao menos um campo para atualizar"))
+
+    }
+
+    @Test
+    fun `verificar status do patch de cost vazio`() = testApplication {
+        bootH2()
+
+        val client = jsonClient()
+
+        val token = client.registrarELogar("custo@exemplo.com", "custoUser")
+
+        val catId = client.post("/categories") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(CategoryDTO(name = "Categoria para teste de Patch (custos)"))
+        }.body<Category>().id!!
+
+        val costId = client.post("/costs") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                CostDTO(
+                    title = "teste",
+                    categoryId = catId,
+                    value = BigDecimal(1000),
+                    type = TransactionType.OUTFLOW,
+                )
+            )
+        }.body<CostDTOResponse>().id
+
+        val resp = client.patch("/costs/$costId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(CostPatch())
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+        assertTrue(resp.bodyAsText().contains("Envie ao menos um campo para atualizar"))
+    }
+
+    @Test
+    fun `verificar status do patch de user vazio`() = testApplication {
+        bootH2()
+
+        val client = jsonClient()
+
+        val token = client.registrarELogar("userPatch@exemplo.com", "userPatchUser")
+
+        val resp = client.patch("/users/profile"){
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(UserPatch())
+        }
+        assertEquals(HttpStatusCode.BadRequest, resp.status)
+        assertTrue(resp.bodyAsText().contains("Envie ao menos um campo para atualizar"))
+    }
+
+    @Test
+    fun `verificar status do patch de cost com dados`() = testApplication {
+        bootH2()
+
+        val client = jsonClient()
+
+        val token = client.registrarELogar("custoComDados@exemplo.com", "custoComDadosUser")
+
+        val catId = client.post("/categories") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(CategoryDTO(name = "Categoria para teste de Patch com dados (custos)"))
+        }.body<Category>().id!!
+
+        val costId = client.post("/costs") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(
+                CostDTO(
+                    title = "teste",
+                    categoryId = catId,
+                    value = BigDecimal(1000),
+                    type = TransactionType.OUTFLOW,
+                )
+            )
+        }.body<CostDTOResponse>().id
+
+        val resp = client.patch("/costs/$costId") {
+            header(HttpHeaders.Authorization, "Bearer $token")
+            contentType(ContentType.Application.Json)
+            setBody(CostPatch(description = "atualizacaoPatch"))
+        }
+        assertEquals(HttpStatusCode.OK, resp.status)
     }
 }

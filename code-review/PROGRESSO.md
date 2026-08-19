@@ -1,8 +1,13 @@
 # Code Review — Backend Ktor (kotlinAPI)
 
-> 🔴 **ABERTOS: ver [`ACHADOS-ABERTOS.md`](ACHADOS-ABERTOS.md) — S2–S8, M1–M5, E3, E5** (+ duas
-> pontas do E2). Varredura de 2026-07-29 sobre o código inteiro. **Começar pelo S2 + S3** (validação
-> de Patch): o S2 já está destravado, porque a dependência dele no E2 saiu no `f1d4052`.
+> 🔴 **ABERTOS: ver [`ACHADOS-ABERTOS.md`](ACHADOS-ABERTOS.md) — S4–S8, M1–M5, E3, E5** (+ duas
+> pontas do E2). Varredura de 2026-07-29 sobre o código inteiro. **Próximo: S4** (rate limit no
+> `POST /users`, ~5 linhas no plugin já instalado).
+>
+> ✅ **S2 e S3 fechados (2026-08-10 `f3595b0`; 2026-08-19).** A família "validação de Patch":
+> `UserPatch` ganhou `validate()` (era o único Patch sem), e os três Patch ganharam o guard de corpo
+> vazio — `PATCH {}` respondia **500** nas três rotas (o Exposed recusa montar `UPDATE SET` vazio).
+> **Suíte: 29 testes, 0 falhas** (eram 25).
 >
 > ✅ **S1 fechado (2026-07-31, `cbdc65c`).** Era o ALTO da lista — `username` sem unicidade, e dois
 > `POST /users` bloqueavam o login de uma vítima permanentemente, sem autenticação. Fechado com
@@ -318,3 +323,4 @@ Progresso das correções do code review. Ordem de ataque: **C1 → C2 → C3 �
 15. Verificar antes de escrever nunca é garantia — é TOCTOU (P4, P6). Quem garante é a constraint / o row count da escrita. A pré-checagem só se paga quando produz informação que o resultado da escrita **não** produz **e** essa informação **muda a ação do cliente**: no P4 o 409 não diz qual campo conflitou, e "é o email" faz o app acender o input e o retry funcionar (fica); no P6 "é global" é inacionável — global não é deletável por ninguém, então 403 vs 404 não muda nada no app (sai). Quando não se paga, ela vira uma segunda regra para divergir da primeira.
 16. Status HTTP é vocabulário, não sinalização livre (P5): coleção vazia é 200 + `[]`, não 404. Reusar um status para dois significados obriga o cliente a tratar erro como estado normal.
 17. Conversão que pode falhar em entrada de cliente (`toInt()`) é 500 esperando acontecer (P3) — e tratamento de erro **inalcançável** é pior que ausente: passa no review por parecer que existe.
+18. Num Patch, **"esse valor é válido?" e "veio algum valor?" são perguntas diferentes** (S3): a primeira olha os campos com regra, a segunda olha TODOS os campos graváveis. Um guard escrito sobre a lista errada rejeita payload legítimo — e o teste que pega isso é o que manda só um campo **sem** regra de valor.

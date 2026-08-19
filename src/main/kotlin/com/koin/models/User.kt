@@ -67,6 +67,7 @@ fun UserDTO.validate(): List<String> = buildList {
 }
 
 fun UserPatch.validate(): List<String> = buildList {
+    if (listOfNotNull(email, password, username).isEmpty()) add("Envie ao menos um campo para atualizar")
     email?.let { if (email.isBlank()) add("O email não deve ser vazio") }
     email?.let { if (!email.contains("@")) add("Email inválido") }
     password?.let { if (password.isBlank() || password.length < 8) add("Sua senha deve ter ao menos 8 caracteres") }

@@ -54,6 +54,7 @@ fun CostDTO.validate(): List<String> = buildList {
 }
 
 fun CostPatch.validate(): List<String> = buildList {
+    if (listOfNotNull(title, description, categoryId, value, type).isEmpty()) add ("Envie ao menos um campo para atualizar")
     title?.let { if (title.isBlank()) add("O título do custo é obrigatório") }
     value?.let { if (value <= BigDecimal.ZERO) add("O valor do custo deve ser maior que zero") }
     categoryId?.let { if (categoryId <= 0 ) add("A categoria do custo é obrigatória") }

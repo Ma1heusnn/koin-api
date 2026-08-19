@@ -32,6 +32,7 @@ fun CategoryDTO.validate(): List<String> = buildList {
 }
 
 fun CategoryPatch.validate(): List<String> = buildList {
+    if (listOfNotNull(name, image, color).isEmpty()) add("Envie ao menos um campo para atualizar")
     name?.let { if (name.isBlank()) add("O nome da categoria é obrigatório")}
     color?.let { if (!color.matches(HEX_COLOR)) add("Formato de cor inválido (#RRGGBB esperado)")}
 }

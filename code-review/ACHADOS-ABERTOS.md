@@ -7,17 +7,19 @@ Nenhum estava nas listas anteriores.
 **Estado do repositório (na data da varredura):** `gradlew test` → **22 testes, 0 falhas** (conferido
 no XML). Nada aqui deixou a suíte vermelha — os achados são de código que ninguém exercitava.
 
-> **Atualização 2026-07-31 — três achados fechados, suíte em 25 testes, 0 falhas:**
+> **Atualização 2026-08-19 — cinco achados fechados, suíte em 29 testes, 0 falhas:**
 >
 > | Achado | Estado | Commit |
 > |---|---|---|
 > | **S1** | ✅ resolvido | `cbdc65c` |
+> | **S2** | ✅ resolvido | `f3595b0` |
+> | **S3** | ✅ resolvido | este |
 > | **E1**, **E4** | ✅ resolvidos | `f1d4052` |
 > | **E2** | 🟡 parcial — falta `transformPasswordInHash` → `security/` e achatar `tables/` | `f1d4052` |
 >
-> Seguem abertos: **S2–S8**, **M1–M5**, **E3**, **E5** e as duas pontas do E2.
+> Seguem abertos: **S4–S8**, **M1–M5**, **E3**, **E5** e as duas pontas do E2.
 > **Os caminhos citados nos achados abaixo são os de antes do `f1d4052`** — hoje tudo mora sob
-> `src/main/kotlin/com/koin/`, e `repositories/` chama-se `tables/`. Próximo da fila: **S2 + S3**.
+> `src/main/kotlin/com/koin/`, e `repositories/` chama-se `tables/`. Próximo da fila: **S4**.
 
 **Prefixos:** `S` = segurança/corretude · `M` = módulo/rota faltando · `E` = estrutura.
 
@@ -28,8 +30,8 @@ teste na hora de consertar. Princípio 8: não afirmar sem rodar.
 ## Ordem sugerida
 
 1. ~~**S1**~~ — ✅ fechado em 2026-07-31 (`cbdc65c`). Era o único explorável por terceiro.
-2. **S2 + S3** — mesma família (validação de Patch); o S2 depende do E2 para não duplicar regra.
-3. **S4** — 5 linhas reaproveitando plugin já instalado.
+2. ~~**S2 + S3**~~ — ✅ fechados (`f3595b0` e este commit). Mesma família (validação de Patch).
+3. **S4** — 5 linhas reaproveitando plugin já instalado. **Próximo da fila.**
 4. ~~**E1 + E2**~~ — ✅ a parte que importava saiu em `f1d4052`: com `validateUser` já virado
    `UserDTO.validate()` em `models/`, **o S2 está destravado** — pode ser atacado direto.
 5. **S5 + S6** — mentira de status code; conserto mecânico.
@@ -114,7 +116,13 @@ afirmando que a vítima continua logando por e-mail **e** por username depois da
 
 ---
 
-## S2 🟠 MÉDIO-ALTO — `PATCH /users/profile` não valida nada
+## ~~S2~~ ✅ **RESOLVIDO** em 2026-08-10 (`f3595b0`) — `PATCH /users/profile` não valida nada
+
+> `UserPatch.validate()` em `models/User.kt`, no formato dos outros dois (`campo?.let`, `buildList`
+> acumulando todos os erros), espelhando o `UserDTO.validate()` logo acima — **inclusive o `@`
+> proibido no username**, que é a metade 1 do S1: sem ele aqui, o PATCH reabria o vetor que o
+> `cbdc65c` fechou no cadastro. Ligado na rota ANTES do service (ordem do H8): 400 sem tocar no banco.
+> O relato original fica abaixo.
 
 **Onde:** `routes/UserRoutes.kt:53-63`, `models/User.kt:47-51` (`UserPatch` sem `validate()`).
 
@@ -137,7 +145,51 @@ primeiro evita nascer com a regra duplicada em dois lugares para divergir depois
 
 ---
 
-## S3 🟠 MÉDIO — `PATCH` com corpo vazio → 500 nas três rotas ✅ VERIFICADO
+## ~~S3~~ ✅ **RESOLVIDO** em 2026-08-19 — `PATCH` com corpo vazio → 500 nas três rotas
+
+> **Como foi fechado:** uma linha no topo de cada um dos três `validate()` de Patch
+> (`CostPatch`, `CategoryPatch`, `UserPatch`):
+>
+> ```kotlin
+> if (listOfNotNull(title, description, categoryId, value, type).isEmpty())
+>     add("Envie ao menos um campo para atualizar")
+> ```
+>
+> **Zero mudança nas rotas** — as três já traduzem `validate()` não-vazio em 400. Foi por isso que o
+> guard foi para o `validate()` e não para o handler: a regra nova entrou numa lista que a rota já
+> sabia ler, sem contrato novo e sem repetir a decisão em três lugares (o erro do P3, onde 3 de 5
+> sites divergiram).
+>
+> **A lista do guard é de TODOS os campos graváveis, não dos campos validados.** São duas perguntas
+> diferentes sobre o mesmo payload — *"esse valor é válido?"* (só campos com regra) e *"veio algum
+> valor?"* (todos). O `CostPatch` tem 5 campos e o `validate()` só olhava 3: `description` e `type`
+> não têm regra de valor, mas **são gravados**. Guard escrito sobre os 3 transformaria
+> `{"description":"almoço"}` num 400 injusto — é exatamente o que o 4º teste defende.
+>
+> **Por que 400 e não um 200 no-op:** com `{}` o `update` não roda, então não existe row count — e o
+> row count *é* a autorização (C1, P6). Um 200 "nada a fazer" responderia sucesso para
+> `PATCH /costs/999 {}` num custo **de outro dono**, porque nunca chegou a perguntar de quem era.
+>
+> **Por que não um `try/catch` da `IllegalArgumentException`:** o erro nunca foi de banco. O Exposed
+> recusa montar `UPDATE ... SET` vazio antes de qualquer I/O, e a exceção é de *argumento*, não de
+> SQL — por isso caía no `exception<Throwable>` do StatusPages e virava 500. Capturá-la trataria o
+> sintoma na saída e classificaria por acidente: a mesma crítica que o **S6** faz ao
+> `ExposedSQLException → 409`. O fato ("este payload não pede alteração nenhuma") é anterior ao
+> banco, e é conhecimento de contrato.
+>
+> **Testes (4 novos, `gradlew test` → 29 testes, 0 falhas, conferido no XML):** `{}` → 400 em
+> `/categories/{id}`, `/costs/{id}` e `/users/profile`, cada um assertando também a **mensagem** no
+> corpo (400 pode vir de qualquer ponto do caminho; o texto prova que saiu do nosso guard, como no
+> P3); mais a contraprova `PATCH /costs/{id} {"description":"almoço"}` → 200, que é a que pega guard
+> encolhido. Um teste por rota, e não um só varrendo as três, porque aqui são **três** `validate()`
+> independentes — o contrário do P3, onde os 5 sites compartilham um único `call.pathId()`.
+>
+> **Achado lateral, corrigido de carona:** `ApplicationTest.kt` declarava `package com.koin.com.koin`
+> morando em `src/test/kotlin/com/koin/` — sobra do refactor do `f1d4052`. Kotlin não exige que
+> pacote e diretório casem (Java exige), então isso compilava em silêncio; o sintoma era
+> `gradlew test --tests com.koin.ApplicationTest` respondendo **"No matching tests found"**.
+>
+> O relato original fica abaixo.
 
 **Onde:** `services/costs/CostService.patchCost`, `services/categories/CategoryService.editCategory`,
 `services/users/UserService.updateUser` — e os `validate()` de `CostPatch`/`CategoryPatch`.
@@ -429,6 +481,13 @@ helper único compartilhado **primeiro**. Não é urgente.
    o username de um seja igual ao e-mail de outro se o login casa os dois no mesmo `OR` (S1).
 3. Validação de Patch que só olha "o que veio" tem um caso de borda que nenhum campo cobre: **não
    veio nada** (S3). O `null` significa "não mexe"; todos `null` significa "não há update".
+   Corolário do conserto: **"é válido?" e "veio?" são perguntas diferentes** e não compartilham lista
+   — a primeira olha os campos com regra, a segunda olha todos os campos graváveis. Colapsar as duas
+   rejeita payload legítimo cujo único campo não tem regra de valor.
+7. Teste agrupado ou separado se decide por **quantos lugares independentes podem regredir**, não por
+   quantas requests o teste faz: os 5 sites do P3 compartilham um `call.pathId()` (um teste basta);
+   os 3 guards do S3 são três funções que evoluem sozinhas (três testes, senão o assert que falha
+   primeiro esconde o estado dos outros dois).
 4. Trabalho caro de CPU em rota **pública** precisa de freio, mesmo fora de transação. O P1 tirou o
    BCrypt de dentro da transação; a CPU continua sendo paga por um anônimo (S4).
 5. Handler genérico de exceção é rede de segurança, não classificação: quando ele mapeia uma família
